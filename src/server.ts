@@ -70,6 +70,30 @@ const tools = [
       },
       required: ['tvdbId', 'title', 'qualityProfileId', 'rootFolderPath'],
     },
+  },
+  {
+    name: 'getMonitoredEpisodes',
+    description: 'Retrieves all monitored episodes for a specific series. Useful for checking which episodes are being tracked for download.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        seriesId: { type: 'number', description: 'The ID of the series to get monitored episodes for. Can be found via listSeries.' },
+        seriesTitle: { type: 'string', description: 'Alternative: The title of the series to search for. Will be used to find the series ID if seriesId is not provided.' }
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'searchMonitoredEpisodes',
+    description: 'Triggers Sonarr to actively search for monitored episodes of a specific series. This will queue download searches for missing episodes.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        seriesId: { type: 'number', description: 'The ID of the series to search episodes for. Can be found via listSeries.' },
+        seriesTitle: { type: 'string', description: 'Alternative: The title of the series to search for. Will be used to find the series ID if seriesId is not provided.' }
+      },
+      required: [],
+    },
   }
 ];
 
@@ -127,6 +151,36 @@ const legacyTools = [
                 searchForMissingEpisodes: { type: 'boolean', description: 'Set to true to search for missing episodes after adding. Defaults to false.' }
             },
             required: ['tvdbId', 'title', 'qualityProfileId', 'rootFolderPath'],
+        },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+        name: 'getMonitoredEpisodes',
+        description: 'Retrieves all monitored episodes for a specific series. Useful for checking which episodes are being tracked for download.',
+        parameters: {
+            type: 'object',
+            properties: {
+                seriesId: { type: 'number', description: 'The ID of the series to get monitored episodes for. Can be found via listSeries.' },
+                seriesTitle: { type: 'string', description: 'Alternative: The title of the series to search for. Will be used to find the series ID if seriesId is not provided.' }
+            },
+            required: [],
+        },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+        name: 'searchMonitoredEpisodes',
+        description: 'Triggers Sonarr to actively search for monitored episodes of a specific series. This will queue download searches for missing episodes.',
+        parameters: {
+            type: 'object',
+            properties: {
+                seriesId: { type: 'number', description: 'The ID of the series to search episodes for. Can be found via listSeries.' },
+                seriesTitle: { type: 'string', description: 'Alternative: The title of the series to search for. Will be used to find the series ID if seriesId is not provided.' }
+            },
+            required: [],
         },
     },
   }
@@ -210,6 +264,104 @@ const toolImplementations: { [key: string]: (params: any) => Promise<any> } = {
       
       const { data } = await sonarrApi.post('/api/v3/series', payload);
       return { success: true, title: data.title, id: data.id, message: "Series added successfully." };
+  },
+
+  getMonitoredEpisodes: async ({ seriesId, seriesTitle }: { seriesId?: number; seriesTitle?: string }) => {
+    let targetSeriesId = seriesId;
+    
+    // If seriesId is not provided, try to find it using seriesTitle
+    if (!targetSeriesId && seriesTitle) {
+      const { data: allSeries } = await sonarrApi.get('/api/v3/series');
+      const foundSeries = allSeries.find((series: any) =>
+        series.title.toLowerCase().includes(seriesTitle.toLowerCase())
+      );
+      
+      if (!foundSeries) {
+        return `No series found matching title: "${seriesTitle}"`;
+      }
+      
+      targetSeriesId = foundSeries.id;
+    }
+    
+    if (!targetSeriesId) {
+      return "Either seriesId or seriesTitle must be provided.";
+    }
+    
+    // Get all episodes for the series
+    const { data: episodes } = await sonarrApi.get('/api/v3/episode', {
+      params: { seriesId: targetSeriesId }
+    });
+    
+    // Filter for monitored episodes only
+    const monitoredEpisodes = episodes.filter((episode: any) => episode.monitored);
+    
+    if (monitoredEpisodes.length === 0) {
+      return `No monitored episodes found for series ID: ${targetSeriesId}`;
+    }
+    
+    // Return simplified episode information
+    return {
+      seriesId: targetSeriesId,
+      seriesTitle: monitoredEpisodes[0]?.series?.title || 'Unknown',
+      totalMonitoredEpisodes: monitoredEpisodes.length,
+      episodes: monitoredEpisodes.map((episode: any) => ({
+        id: episode.id,
+        seasonNumber: episode.seasonNumber,
+        episodeNumber: episode.episodeNumber,
+        title: episode.title,
+        airDate: episode.airDateUtc,
+        hasFile: episode.hasFile,
+        monitored: episode.monitored,
+        overview: episode.overview
+      }))
+    };
+  },
+
+  searchMonitoredEpisodes: async ({ seriesId, seriesTitle }: { seriesId?: number; seriesTitle?: string }) => {
+    let targetSeriesId = seriesId;
+    
+    // If seriesId is not provided, try to find it using seriesTitle
+    if (!targetSeriesId && seriesTitle) {
+      const { data: allSeries } = await sonarrApi.get('/api/v3/series');
+      const foundSeries = allSeries.find((series: any) =>
+        series.title.toLowerCase().includes(seriesTitle.toLowerCase())
+      );
+      
+      if (!foundSeries) {
+        return `No series found matching title: "${seriesTitle}"`;
+      }
+      
+      targetSeriesId = foundSeries.id;
+    }
+    
+    if (!targetSeriesId) {
+      return "Either seriesId or seriesTitle must be provided.";
+    }
+    
+    // Trigger a series search command
+    const commandPayload = {
+      name: "SeriesSearch",
+      seriesId: targetSeriesId
+    };
+    
+    try {
+      const { data: command } = await sonarrApi.post('/api/v3/command', commandPayload);
+      
+      return {
+        success: true,
+        message: `Search command queued for series ID: ${targetSeriesId}`,
+        commandId: command.id,
+        commandName: command.name,
+        status: command.status || 'queued',
+        seriesId: targetSeriesId
+      };
+    } catch (error: any) {
+      return {
+        success: false,
+        message: `Failed to queue search command: ${error.response?.data?.message || error.message}`,
+        seriesId: targetSeriesId
+      };
+    }
   }
 };
 
@@ -260,7 +412,7 @@ app.post('/mcp', async (req: Request, res: Response) => {
         },
         serverInfo: {
           name: 'sonarr-mcp-server',
-          version: '1.0.0'
+          version: '1.1.0'
         }
       };
     } else if (method === 'tools/list') {

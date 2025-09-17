@@ -8,6 +8,8 @@ A Model Context Protocol (MCP) server that provides integration with Sonarr for 
 - **Calendar**: Get upcoming and recently aired episodes
 - **Series Lookup**: Search for new TV series by name
 - **Add Series**: Add new TV series to Sonarr with custom settings
+- **Get Monitored Episodes**: Retrieve all monitored episodes for a specific series
+- **Search Monitored Episodes**: Trigger Sonarr to actively search for monitored episodes
 
 ## Prerequisites
 
@@ -98,6 +100,8 @@ POST http://localhost:12009/mcp
 2. **getCalendar**: Get upcoming/recent episodes (optional date range)
 3. **lookupSeries**: Search for new series by name
 4. **addSeries**: Add a new series to Sonarr
+5. **getMonitoredEpisodes**: Get all monitored episodes for a specific series
+6. **searchMonitoredEpisodes**: Trigger Sonarr to search for monitored episodes
 
 ## Integration with AI Assistants
 
