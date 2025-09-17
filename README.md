@@ -126,13 +126,6 @@ docker build -t sonarr-mcp-server .
 docker run -p 12009:12009 --env-file .env sonarr-mcp-server
 ```
 
-## Security Considerations
-
-- Never commit your `.env` file to version control
-- Keep your Sonarr API key secure
-- Consider running the server behind a reverse proxy with authentication
-- Use HTTPS in production environments
-
 ## Troubleshooting
 
 ### Common Issues
