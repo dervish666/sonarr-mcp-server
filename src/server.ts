@@ -94,6 +94,47 @@ const tools = [
       },
       required: [],
     },
+  },
+  {
+    name: 'searchEpisode',
+    description: 'Searches for a specific episode by series and episode details, and can trigger a search for that episode.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        seriesId: { type: 'number', description: 'The ID of the series. Can be found via listSeries.' },
+        seriesTitle: { type: 'string', description: 'Alternative: The title of the series to search for. Will be used to find the series ID if seriesId is not provided.' },
+        seasonNumber: { type: 'number', description: 'The season number of the episode.' },
+        episodeNumber: { type: 'number', description: 'The episode number within the season.' },
+        triggerSearch: { type: 'boolean', description: 'Set to true to trigger an active search for this episode. Defaults to false.' }
+      },
+      required: ['seasonNumber', 'episodeNumber'],
+    },
+  },
+  {
+    name: 'checkEpisodeDownloaded',
+    description: 'Checks if a specific episode is currently downloaded and available.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        seriesId: { type: 'number', description: 'The ID of the series. Can be found via listSeries.' },
+        seriesTitle: { type: 'string', description: 'Alternative: The title of the series to search for. Will be used to find the series ID if seriesId is not provided.' },
+        seasonNumber: { type: 'number', description: 'The season number of the episode.' },
+        episodeNumber: { type: 'number', description: 'The episode number within the season.' }
+      },
+      required: ['seasonNumber', 'episodeNumber'],
+    },
+  },
+  {
+    name: 'getSeriesEpisodeCount',
+    description: 'Gets the total number of episodes for a series, including all seasons.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        seriesId: { type: 'number', description: 'The ID of the series. Can be found via listSeries.' },
+        seriesTitle: { type: 'string', description: 'Alternative: The title of the series to search for. Will be used to find the series ID if seriesId is not provided.' }
+      },
+      required: [],
+    },
   }
 ];
 
@@ -182,6 +223,56 @@ const legacyTools = [
             },
             required: [],
         },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'searchEpisode',
+      description: 'Searches for a specific episode by series and episode details, and can trigger a search for that episode.',
+      parameters: {
+        type: 'object',
+        properties: {
+          seriesId: { type: 'number', description: 'The ID of the series. Can be found via listSeries.' },
+          seriesTitle: { type: 'string', description: 'Alternative: The title of the series to search for. Will be used to find the series ID if seriesId is not provided.' },
+          seasonNumber: { type: 'number', description: 'The season number of the episode.' },
+          episodeNumber: { type: 'number', description: 'The episode number within the season.' },
+          triggerSearch: { type: 'boolean', description: 'Set to true to trigger an active search for this episode. Defaults to false.' }
+        },
+        required: ['seasonNumber', 'episodeNumber'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'checkEpisodeDownloaded',
+      description: 'Checks if a specific episode is currently downloaded and available.',
+      parameters: {
+        type: 'object',
+        properties: {
+          seriesId: { type: 'number', description: 'The ID of the series. Can be found via listSeries.' },
+          seriesTitle: { type: 'string', description: 'Alternative: The title of the series to search for. Will be used to find the series ID if seriesId is not provided.' },
+          seasonNumber: { type: 'number', description: 'The season number of the episode.' },
+          episodeNumber: { type: 'number', description: 'The episode number within the season.' }
+        },
+        required: ['seasonNumber', 'episodeNumber'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'getSeriesEpisodeCount',
+      description: 'Gets the total number of episodes for a series, including all seasons.',
+      parameters: {
+        type: 'object',
+        properties: {
+          seriesId: { type: 'number', description: 'The ID of the series. Can be found via listSeries.' },
+          seriesTitle: { type: 'string', description: 'Alternative: The title of the series to search for. Will be used to find the series ID if seriesId is not provided.' }
+        },
+        required: [],
+      },
     },
   }
 ];
@@ -319,34 +410,34 @@ const toolImplementations: { [key: string]: (params: any) => Promise<any> } = {
 
   searchMonitoredEpisodes: async ({ seriesId, seriesTitle }: { seriesId?: number; seriesTitle?: string }) => {
     let targetSeriesId = seriesId;
-    
+
     // If seriesId is not provided, try to find it using seriesTitle
     if (!targetSeriesId && seriesTitle) {
       const { data: allSeries } = await sonarrApi.get('/api/v3/series');
       const foundSeries = allSeries.find((series: any) =>
         series.title.toLowerCase().includes(seriesTitle.toLowerCase())
       );
-      
+
       if (!foundSeries) {
         return `No series found matching title: "${seriesTitle}"`;
       }
-      
+
       targetSeriesId = foundSeries.id;
     }
-    
+
     if (!targetSeriesId) {
       return "Either seriesId or seriesTitle must be provided.";
     }
-    
+
     // Trigger a series search command
     const commandPayload = {
       name: "SeriesSearch",
       seriesId: targetSeriesId
     };
-    
+
     try {
       const { data: command } = await sonarrApi.post('/api/v3/command', commandPayload);
-      
+
       return {
         success: true,
         message: `Search command queued for series ID: ${targetSeriesId}`,
@@ -362,6 +453,216 @@ const toolImplementations: { [key: string]: (params: any) => Promise<any> } = {
         seriesId: targetSeriesId
       };
     }
+  },
+
+  searchEpisode: async ({
+    seriesId,
+    seriesTitle,
+    seasonNumber,
+    episodeNumber,
+    triggerSearch = false
+  }: {
+    seriesId?: number;
+    seriesTitle?: string;
+    seasonNumber: number;
+    episodeNumber: number;
+    triggerSearch?: boolean;
+  }) => {
+    let targetSeriesId = seriesId;
+
+    // If seriesId is not provided, try to find it using seriesTitle
+    if (!targetSeriesId && seriesTitle) {
+      const { data: allSeries } = await sonarrApi.get('/api/v3/series');
+      const foundSeries = allSeries.find((series: any) =>
+        series.title.toLowerCase().includes(seriesTitle.toLowerCase())
+      );
+
+      if (!foundSeries) {
+        return `No series found matching title: "${seriesTitle}"`;
+      }
+
+      targetSeriesId = foundSeries.id;
+    }
+
+    if (!targetSeriesId) {
+      return "Either seriesId or seriesTitle must be provided.";
+    }
+
+    // Get all episodes for the series
+    const { data: episodes } = await sonarrApi.get('/api/v3/episode', {
+      params: { seriesId: targetSeriesId }
+    });
+
+    // Find the specific episode
+    const targetEpisode = episodes.find((episode: any) =>
+      episode.seasonNumber === seasonNumber &&
+      episode.episodeNumber === episodeNumber
+    );
+
+    if (!targetEpisode) {
+      return `Episode S${seasonNumber}E${episodeNumber} not found for series ID: ${targetSeriesId}`;
+    }
+
+    const result = {
+      seriesId: targetSeriesId,
+      seriesTitle: targetEpisode.series?.title || 'Unknown',
+      seasonNumber: targetEpisode.seasonNumber,
+      episodeNumber: targetEpisode.episodeNumber,
+      title: targetEpisode.title,
+      airDate: targetEpisode.airDateUtc,
+      hasFile: targetEpisode.hasFile,
+      monitored: targetEpisode.monitored,
+      overview: targetEpisode.overview
+    };
+
+    // If triggerSearch is true, queue an episode search
+    if (triggerSearch) {
+      const commandPayload = {
+        name: "EpisodeSearch",
+        episodeIds: [targetEpisode.id]
+      };
+
+      try {
+        const { data: command } = await sonarrApi.post('/api/v3/command', commandPayload);
+
+        return {
+          ...result,
+          searchResult: {
+            success: true,
+            message: `Search command queued for episode S${seasonNumber}E${episodeNumber}`,
+            commandId: command.id,
+            commandName: command.name,
+            status: command.status || 'queued'
+          }
+        };
+      } catch (error: any) {
+        return {
+          ...result,
+          searchResult: {
+            success: false,
+            message: `Failed to queue search command: ${error.response?.data?.message || error.message}`
+          }
+        };
+      }
+    }
+
+    return result;
+  },
+
+  checkEpisodeDownloaded: async ({
+    seriesId,
+    seriesTitle,
+    seasonNumber,
+    episodeNumber
+  }: {
+    seriesId?: number;
+    seriesTitle?: string;
+    seasonNumber: number;
+    episodeNumber: number;
+  }) => {
+    let targetSeriesId = seriesId;
+
+    // If seriesId is not provided, try to find it using seriesTitle
+    if (!targetSeriesId && seriesTitle) {
+      const { data: allSeries } = await sonarrApi.get('/api/v3/series');
+      const foundSeries = allSeries.find((series: any) =>
+        series.title.toLowerCase().includes(seriesTitle.toLowerCase())
+      );
+
+      if (!foundSeries) {
+        return `No series found matching title: "${seriesTitle}"`;
+      }
+
+      targetSeriesId = foundSeries.id;
+    }
+
+    if (!targetSeriesId) {
+      return "Either seriesId or seriesTitle must be provided.";
+    }
+
+    // Get all episodes for the series
+    const { data: episodes } = await sonarrApi.get('/api/v3/episode', {
+      params: { seriesId: targetSeriesId }
+    });
+
+    // Find the specific episode
+    const targetEpisode = episodes.find((episode: any) =>
+      episode.seasonNumber === seasonNumber &&
+      episode.episodeNumber === episodeNumber
+    );
+
+    if (!targetEpisode) {
+      return `Episode S${seasonNumber}E${episodeNumber} not found for series ID: ${targetSeriesId}`;
+    }
+
+    return {
+      seriesId: targetSeriesId,
+      seriesTitle: targetEpisode.series?.title || 'Unknown',
+      seasonNumber: targetEpisode.seasonNumber,
+      episodeNumber: targetEpisode.episodeNumber,
+      title: targetEpisode.title,
+      isDownloaded: targetEpisode.hasFile,
+      downloadStatus: targetEpisode.hasFile ? 'Downloaded' : 'Not Downloaded',
+      airDate: targetEpisode.airDateUtc,
+      monitored: targetEpisode.monitored
+    };
+  },
+
+  getSeriesEpisodeCount: async ({ seriesId, seriesTitle }: { seriesId?: number; seriesTitle?: string }) => {
+    let targetSeriesId = seriesId;
+
+    // If seriesId is not provided, try to find it using seriesTitle
+    if (!targetSeriesId && seriesTitle) {
+      const { data: allSeries } = await sonarrApi.get('/api/v3/series');
+      const foundSeries = allSeries.find((series: any) =>
+        series.title.toLowerCase().includes(seriesTitle.toLowerCase())
+      );
+
+      if (!foundSeries) {
+        return `No series found matching title: "${seriesTitle}"`;
+      }
+
+      targetSeriesId = foundSeries.id;
+    }
+
+    if (!targetSeriesId) {
+      return "Either seriesId or seriesTitle must be provided.";
+    }
+
+    // Get all episodes for the series
+    const { data: episodes } = await sonarrApi.get('/api/v3/episode', {
+      params: { seriesId: targetSeriesId }
+    });
+
+    if (!episodes || episodes.length === 0) {
+      return {
+        seriesId: targetSeriesId,
+        seriesTitle: 'Unknown',
+        totalEpisodes: 0,
+        seasonBreakdown: {}
+      };
+    }
+
+    // Get series details for the title
+    const { data: seriesData } = await sonarrApi.get(`/api/v3/series/${targetSeriesId}`);
+
+    // Count episodes by season
+    const seasonBreakdown: { [key: number]: number } = {};
+    let totalEpisodes = 0;
+
+    episodes.forEach((episode: any) => {
+      const season = episode.seasonNumber;
+      seasonBreakdown[season] = (seasonBreakdown[season] || 0) + 1;
+      totalEpisodes++;
+    });
+
+    return {
+      seriesId: targetSeriesId,
+      seriesTitle: seriesData?.title || 'Unknown',
+      totalEpisodes: totalEpisodes,
+      seasonBreakdown: seasonBreakdown,
+      status: seriesData?.status || 'Unknown'
+    };
   }
 };
 

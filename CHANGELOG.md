@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2025-09-22
+
+### Added
+- New `searchEpisode` tool to search for specific episodes and optionally trigger search for them
+- New `checkEpisodeDownloaded` tool to verify if a specific episode is currently downloaded
+- New `getSeriesEpisodeCount` tool to get total episode count and season breakdown for a series
+- Enhanced episode management capabilities with detailed episode information
+- Support for both series ID and series title as input parameters across all new tools
+- Episode search command integration using Sonarr's command API
+
+### Changed
+- Updated version to 1.2.0 following semantic versioning principles
+
 ## [1.1.0] - 2025-01-17
 
 ### Added
